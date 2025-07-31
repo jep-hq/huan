@@ -1,0 +1,48 @@
+org: jepdev
+
+service: sls-${self:custom.tes.customerName}-${self:custom.tes.projectName}
+
+plugins:
+  - '@tes/serverless-default'
+  - serverless-s3-deploy
+  - serverless-plugin-lambda-insights
+
+custom:
+  tes:
+    type: frontend
+    projectName: smlt
+    customerCode: 100004
+    customerName: huan
+    prod:
+      alias: smlt.link
+      certificate: arn:aws:acm:us-east-1:495963541969:certificate/20c0a3ca-155e-4ff3-b5fc-c36e155da84b
+
+  assets:
+    auto: true,
+    targets:
+      - bucket: 'frontend--websites'
+        empty: true
+        prefix: 100004-huan/smlt/prod
+        files:
+          - source: '.output/public/'
+            globs: '**/**'
+            headers:
+              CacheControl: 'no-cache'
+
+deploymentBucket: kinayu--serverless-deployments-us-east-1
+
+provider:
+  name: aws
+  region: eu-central-1
+  runtime: nodejs22.x
+
+functions:
+  edgeViewerRequest:
+    name: ${self:service}-edge-viewer-request
+    handler: functions.smlt.edgeViewerRequest
+    memorySize: 128
+    timeout: 5
+    events:
+      - cloudFront:
+          eventType: viewer-request
+          origin: 's3://frontend--websites.s3.amazonaws.com/100004-huan/smlt/prod'

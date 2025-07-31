@@ -1,0 +1,41 @@
+version: 0.2
+env:
+  variables:
+    BRANCH: 'master'
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - BRANCH=$(echo $CODEBUILD_WEBHOOK_BASE_REF | sed 's/refs\/heads\///')
+      - |
+        if [ "${BRANCH}" = "" ] ; then
+          BRANCH=$(echo $CODEBUILD_WEBHOOK_HEAD_REF | sed 's/refs\/heads\///')
+        fi
+      - echo branch $BRANCH
+      - sed -i "s/__BRANCH__/$BRANCH/" .env.production
+      - sed -i "s/__BRANCH__/$BRANCH/" .env.testsystem
+  build:
+    commands:
+      - npm install
+      - |
+        if [ "$BRANCH" = "master" ] ; then
+          npm run build
+        fi
+      - |
+        if [ "$BRANCH" != "master" ] ; then
+          npm run build:test
+        fi
+  post_build:
+    commands:
+      - |
+        if [ "$BRANCH" = "master" ] ; then
+          - serverless deploy --stage prod
+          - serverless s3deploy --stage prod
+        fi
+      - |
+        if [ "$BRANCH" != "master" ] ; then
+          - serverless deploy --stage dev
+          - serverless s3deploy --stage dev
+        fi
