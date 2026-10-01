@@ -6,13 +6,22 @@ export default defineNuxtConfig({
     compatibilityVersion: 4,
   },
 
-  modules: ['nuxt-headlessui', '@nuxtjs/seo', 'shadcn-nuxt'],
+  modules: ['nuxt-headlessui', '@nuxtjs/seo', 'shadcn-nuxt', '@pinia/nuxt'],
 
   site: {
     // set site by environment variables
     url: process.env.VITE_APP_SITE_URL,
     name: process.env.VITE_APP_SITE_NAME,
     description: process.env.VITE_APP_SITE_DESCRIPTION,
+  },
+
+  runtimeConfig: {
+    public: {
+      apiUrl: process.env.NUXT_PUBLIC_API_URL,
+      authentikUrl: process.env.NUXT_PUBLIC_AUTHENTIK_URL,
+      authentikClientId: process.env.NUXT_PUBLIC_AUTHENTIK_CLIENT_ID,
+      test: process.env
+    },
   },
 
   ssr: true,

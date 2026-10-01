@@ -1,0 +1,62 @@
+# Docker Compose Override for Production
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  backend:
+    # Remove --reload flag for production
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    # Don't mount source code in production
+    volumes: []
+    restart: unless-stopped
+
+  worker:
+    volumes:
+      - ./spark_jobs:/opt/spark-apps
+    restart: unless-stopped
+
+  celery-beat:
+    volumes: []
+    restart: unless-stopped
+
+  flower:
+    environment:
+      FLOWER_UNAUTHENTICATED_API: "false"
+      FLOWER_BASIC_AUTH: ${FLOWER_USERNAME}:${FLOWER_PASSWORD}
+    restart: unless-stopped
+
+  frontend:
+    # Remove source code mount and use production build
+    volumes: []
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NUXT_PUBLIC_API_URL: ${NUXT_PUBLIC_API_URL}
+      NUXT_PUBLIC_AUTHENTIK_URL: ${NUXT_PUBLIC_AUTHENTIK_URL}
+      NUXT_PUBLIC_AUTHENTIK_CLIENT_ID: ${NUXT_PUBLIC_AUTHENTIK_CLIENT_ID}
+      NUXT_HOST: "0.0.0.0"
+
+  postgres:
+    restart: unless-stopped
+    # Consider using external managed database in production
+
+  redis:
+    restart: unless-stopped
+    # Consider using external managed Redis in production
+
+  authentik-db:
+    restart: unless-stopped
+
+  authentik-redis:
+    restart: unless-stopped
+
+  authentik-server:
+    restart: unless-stopped
+
+  authentik-worker:
+    restart: unless-stopped
+
+  spark-master:
+    restart: unless-stopped
+
+  spark-worker:
+    restart: unless-stopped

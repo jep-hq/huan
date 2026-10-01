@@ -1,0 +1,52 @@
+# Authentik Blueprint: HUAN Application (Production)
+# This blueprint uses environment-specific credentials
+# Copy and customize for production deployment
+
+version: 1
+metadata:
+  name: HUAN Application Setup (Production)
+  labels:
+    app: huan
+    env: production
+
+entries:
+  # Create OAuth2/OIDC Provider
+  - model: authentik_providers_oauth2.oauth2provider
+    id: huan-oauth2-provider-prod
+    identifiers:
+      name: HUAN OAuth2 Provider
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-authorization-flow]]
+      client_type: confidential
+      # Generate secure credentials:
+      # Client ID: openssl rand -hex 20
+      # Client Secret: openssl rand -base64 64
+      client_id: REPLACE_WITH_SECURE_CLIENT_ID
+      client_secret: REPLACE_WITH_SECURE_CLIENT_SECRET
+      # Update redirect URIs for production
+      redirect_uris: |-
+        https://yourdomain.com/auth/callback
+        https://app.yourdomain.com/auth/callback
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+      access_code_validity: hours=1
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      include_claims_in_id_token: true
+
+  # Create Application
+  - model: authentik_core.application
+    id: huan-application-prod
+    identifiers:
+      slug: huan-prod
+    attrs:
+      name: HUAN (Production)
+      provider: !KeyOf huan-oauth2-provider-prod
+      launch_url: https://app.yourdomain.com
+      open_in_new_tab: false
+      policy_engine_mode: any
+
+conditions: []

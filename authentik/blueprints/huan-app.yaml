@@ -1,0 +1,46 @@
+# Authentik Blueprint: HUAN Application Configuration
+# Note: redirect_uris are configured via API after creation due to blueprint limitations
+
+version: 1
+metadata:
+  name: HUAN Application Setup
+  labels:
+    app: huan
+
+entries:
+  # Create OAuth2/OIDC Provider
+  - model: authentik_providers_oauth2.oauth2provider
+    id: huan-oauth2-provider
+    state: present
+    identifiers:
+      client_id: huan-client-changeme
+    attrs:
+      name: HUAN OAuth2 Provider
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_secret: huan-secret-changeme-use-secure-random-value
+      redirect_uris:
+      - matching_mode: strict
+        url: http://localhost:3000/auth/callback
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+      sub_mode: hashed_user_id
+      include_claims_in_id_token: true
+
+  # Create Application
+  - model: authentik_core.application
+    id: huan-application
+    state: present
+    identifiers:
+      slug: huan
+    attrs:
+      name: HUAN
+      provider: !KeyOf huan-oauth2-provider
+      policy_engine_mode: any
+
+conditions: []
+

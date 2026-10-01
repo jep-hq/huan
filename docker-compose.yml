@@ -1,0 +1,187 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: huan_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - huan_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: huan_redis
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    networks:
+      - huan_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: huan_backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL}
+      ZITADEL_URL: ${ZITADEL_URL}
+      ZITADEL_CLIENT_ID: ${ZITADEL_CLIENT_ID}
+      ZITADEL_CLIENT_SECRET: ${ZITADEL_CLIENT_SECRET}
+      SECRET_KEY: ${SECRET_KEY}
+      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+      - spark-master
+    networks:
+      - huan_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark_master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "${SPARK_MASTER_UI_PORT:-8081}:8080"
+      - "${SPARK_MASTER_PORT:-7077}:7077"
+    volumes:
+      - ./spark_jobs:/opt/spark-apps
+      - spark_data:/opt/spark-data
+    networks:
+      - huan_network
+
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: spark_worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=${SPARK_MASTER_URL}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2G}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark_jobs:/opt/spark-apps
+      - spark_data:/opt/spark-data
+    networks:
+      - huan_network
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: huan_celery_worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL}
+      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    volumes:
+      - ./backend:/app
+      - ./spark_jobs:/opt/spark-apps
+    depends_on:
+      - postgres
+      - redis
+      - spark-master
+    networks:
+      - huan_network
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: huan_celery_beat
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - huan_network
+
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: huan_flower
+    command: celery -A app.celery_app flower --port=5555
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL}
+      FLOWER_UNAUTHENTICATED_API: ${FLOWER_UNAUTHENTICATED_API:-true}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+    networks:
+      - huan_network
+
+  frontend:
+    build:
+      context: ./smlt
+      dockerfile: Dockerfile
+    container_name: huan_frontend
+    environment:
+      NUXT_PUBLIC_API_URL: ${NUXT_PUBLIC_API_URL}
+      NUXT_PUBLIC_ZITADEL_URL: ${NUXT_PUBLIC_ZITADEL_URL}
+      NUXT_PUBLIC_ZITADEL_CLIENT_ID: ${NUXT_PUBLIC_ZITADEL_CLIENT_ID}
+      NUXT_HOST: "0.0.0.0"
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./smlt:/app
+      - /app/node_modules
+      - /app/.nuxt
+    depends_on:
+      - backend
+    networks:
+      - huan_network
+
+volumes:
+  postgres_data:
+  spark_data:
+
+networks:
+  huan_network:
+    driver: bridge
